@@ -14,6 +14,7 @@ def handle_handshake(conn):
         max_size = handshake_data['max_size']
         
         response = json.dumps({
+            "type": "HANDSHAKE_RESPONSE",
             "status": "HANDSHAKE_OK",
             "mode": mode,
             "max_size": max_size
@@ -23,7 +24,11 @@ def handle_handshake(conn):
         return mode, int(max_size)
     except json.JSONDecodeError:
         print("Erro: Handshake inválido")
-        conn.sendall(json.dumps({"status": "HANDSHAKE_ERROR"}).encode())
+        error_response = json.dumps({
+            "type": "HANDSHAKE_RESPONSE",
+            "status": "HANDSHAKE_ERROR"
+        })
+        conn.sendall(error_response.encode())
         return None, None
 
 def handle_client(conn, addr, mode, max_size):
@@ -35,10 +40,27 @@ def handle_client(conn, addr, mode, max_size):
             data = conn.recv(max_size).decode()
             if not data:
                 break
-            print(f"Recebido: {data}")
             
-            response = f"Servidor recebeu: {data}"
-            conn.sendall(response.encode())
+            message = json.loads(data)
+            
+            if message["type"] == "MESSAGE":
+                print(f"Mensagem recebida: {message['content']}")
+                
+                response = json.dumps({
+                    "type": "RESPONSE",
+                    "content": f"Servidor recebeu: {message['content']}"
+                })
+                conn.sendall(response.encode())
+            
+            elif message["type"] == "END":
+                print("Cliente solicitou encerramento da conexão.")
+                break
+            
+            else:
+                print(f"Tipo de mensagem desconhecido: {message['type']}")
+        
+        except json.JSONDecodeError:
+            print("Erro: mensagem inválida recebida.")
         except Exception as e:
             print(f"Erro na comunicação: {e}")
             break

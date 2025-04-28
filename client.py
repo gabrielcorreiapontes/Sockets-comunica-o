@@ -14,7 +14,7 @@ def perform_handshake(sock, mode, max_size):
     response = sock.recv(1024).decode()
     response_data = json.loads(response)
     
-    if response_data['status'] == "HANDSHAKE_OK":
+    if response_data.get('status') == "HANDSHAKE_OK":
         print("Handshake bem-sucedido")
         return True
     else:
@@ -33,11 +33,23 @@ def start_client():
             while True:
                 message = input("Digite uma mensagem (ou 'sair' para encerrar): ")
                 if message.lower() == 'sair':
+                    end_message = json.dumps({
+                        "type": "END"
+                    })
+                    s.sendall(end_message.encode())
                     break
                 
-                s.sendall(message.encode())
+                message_data = json.dumps({
+                    "type": "MESSAGE",
+                    "content": message
+                })
+                s.sendall(message_data.encode())
+                
                 data = s.recv(max_size).decode()
-                print(f"Resposta do servidor: {data}")
+                response = json.loads(data)
+                
+                if response["type"] == "RESPONSE":
+                    print(f"Resposta do servidor: {response['content']}")
         
         print("Conexão encerrada")
 
