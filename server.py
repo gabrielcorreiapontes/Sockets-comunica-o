@@ -18,7 +18,7 @@ def handle_handshake(conn):
             "type": "HANDSHAKE_RESPONSE",
             "status": "HANDSHAKE_OK",
             "mode": mode,
-            "max_size": max_size
+            "max_size": max_size,
             "window_size": handshake_data ["windowsize"]
         })
         conn.sendall(response.encode())
@@ -35,7 +35,7 @@ def handle_handshake(conn):
 
 def handle_client(conn, addr, mode, max_size, window_size):
     print(f"Conectado por {addr}")
-    print(f"Modo: {mode}, Tamanho máximo: {max_size}",janela : {window_size}")
+    print(f"Modo: {mode}", "Tamanho máximo: {max_size}","janela : {window_size}")
     
     while True:
         try:
@@ -51,7 +51,7 @@ def handle_client(conn, addr, mode, max_size, window_size):
 
 
                 #Envio do ack para o cliente
-                 ack = json.dumps({
+                ack = json.dumps({
                     "type": "ACK",
                     "seq": seq})
 
