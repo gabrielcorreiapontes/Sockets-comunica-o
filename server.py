@@ -12,12 +12,14 @@ def handle_handshake(conn):
         handshake_data = json.loads(data)
         mode = handshake_data['mode']
         max_size = handshake_data['max_size']
+        window_size = handshake_data["window_size'"]
         
         response = json.dumps({
             "type": "HANDSHAKE_RESPONSE",
             "status": "HANDSHAKE_OK",
             "mode": mode,
             "max_size": max_size
+            "window_size": handshake_data ["windowsize"]
         })
         conn.sendall(response.encode())
         
@@ -31,9 +33,9 @@ def handle_handshake(conn):
         conn.sendall(error_response.encode())
         return None, None
 
-def handle_client(conn, addr, mode, max_size):
+def handle_client(conn, addr, mode, max_size, window_size):
     print(f"Conectado por {addr}")
-    print(f"Modo: {mode}, Tamanho máximo: {max_size}")
+    print(f"Modo: {mode}, Tamanho máximo: {max_size}",janela : {window_size}")
     
     while True:
         try:
@@ -44,8 +46,16 @@ def handle_client(conn, addr, mode, max_size):
             message = json.loads(data)
             
             if message["type"] == "MESSAGE":
+                seq = message["seq"]
                 print(f"Mensagem recebida: {message['content']}")
-                
+
+
+                #Envio do ack para o cliente
+                 ack = json.dumps({
+                    "type": "ACK",
+                    "seq": seq})
+
+                     
                 response = json.dumps({
                     "type": "RESPONSE",
                     "content": f"Servidor recebeu: {message['content']}"
