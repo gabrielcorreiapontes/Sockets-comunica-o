@@ -23,7 +23,7 @@ def handle_handshake(conn):
         })
         conn.sendall(response.encode())
         
-        return mode, int(max_size)
+        return mode, int(max_size), int(window_size)
     except json.JSONDecodeError:
         print("Erro: Handshake inválido")
         error_response = json.dumps({
