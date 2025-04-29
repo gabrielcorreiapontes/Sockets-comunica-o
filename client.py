@@ -1,5 +1,6 @@
 import socket
 import json
+import time
 from time import sleep
 
 def criar_pacotes(texto):
@@ -47,6 +48,8 @@ def main():
     inicio = 0
     proximo = 0
 
+    tempo_inicio = time.time()
+
     while inicio < len(pacotes):
         while proximo < inicio + janela and proximo < len(pacotes):
             cliente.send(json.dumps(pacotes[proximo]).encode())
@@ -82,6 +85,9 @@ def main():
             print("Timeout detectado! Reenviando...")
             proximo = inicio
 
+    tempo_que_termina = time.time()
+    tempototal_msg = tempo_que_termina - tempo_inicio
+    print(f"Tempo total de envio: {tempototal_msg:.3f} segundos")
     cliente.close()
 
 if __name__ == "__main__":
