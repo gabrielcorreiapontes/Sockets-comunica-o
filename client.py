@@ -1,7 +1,6 @@
 import socket
 import json
 import time
-from time import sleep
 
 def criar_pacotes(texto):
     blocos = [texto[i:i+3] for i in range(0, len(texto), 3)]
@@ -13,11 +12,7 @@ def criar_pacotes(texto):
             "checksum": sum(bloco.encode()) % 256
         }
         pacotes.append(pacote)
-    pacotes.append({"sequencia": len(blocos), "conteudo": "###", "checksum": 0})
     return pacotes
-
-def gerar_checksum(dado):
-    return sum(dado.encode()) % 256
 
 def escolher_modo():
     while True:
@@ -34,60 +29,72 @@ def main():
     cliente.connect(('localhost', 2048))
 
     modo = escolher_modo()
-    mensagem = input("Digite a mensagem para enviar: ")
+    rajada = "True"
 
-    pacotes = criar_pacotes(mensagem)
-
-    rajada = "True" if len(pacotes) > 1 else "False"
     cliente.send(f"{modo},{rajada}".encode())
-
     confirma = cliente.recv(256).decode()
     print("Servidor:", confirma)
 
     janela = 4
-    inicio = 0
-    proximo = 0
+    while True:
+        mensagem = input("Digite a mensagem para enviar (ou 'exit' para encerrar): ")
+        if mensagem.strip().lower() == "exit":
+            fim = json.dumps({"sequencia": -1, "conteudo": "###", "checksum": 0}) + "\n"
+            cliente.send(fim.encode())
+            break
 
-    tempo_inicio = time.time()
+        pacotes = criar_pacotes(mensagem)
+        pacotes.append({"sequencia": len(pacotes), "conteudo": "###", "checksum": 0})
 
-    while inicio < len(pacotes):
-        while proximo < inicio + janela and proximo < len(pacotes):
-            cliente.send(json.dumps(pacotes[proximo]).encode())
-            print(f"Enviado pacote {pacotes[proximo]['sequencia']}")
-            proximo += 1
+        inicio = 0
+        proximo = 0
+        tempo_inicio = time.time()
 
-        try:
-            cliente.settimeout(2.5)
-            resposta = cliente.recv(256).decode()
-            print("Servidor respondeu:", resposta)
+        while inicio < len(pacotes):
+            if modo == "rs":
+                cliente.send((json.dumps(pacotes[inicio]) + "\n").encode())
+                print(f"Enviado pacote {pacotes[inicio]['sequencia']}")
+                proximo = inicio + 1  # só avança após ACK abaixo
+            else:  # modo gbn
+                while proximo < inicio + janela and proximo < len(pacotes):
+                    cliente.send((json.dumps(pacotes[proximo]) + "\n").encode())
+                    print(f"Enviado pacote {pacotes[proximo]['sequencia']}")
+                    proximo += 1
 
-            if not resposta:
-                print("Conexão encerrada.")
-                break
 
-            if modo == "gbn":
-                if "ACK" in resposta:
-                    recebidos = resposta.count("ACK")
-                    inicio += recebidos
-                    print(f"Janela movida para {inicio}")
-                else:
-                    print("Erro, reenviando desde o início da janela.")
-                    proximo = inicio
+            try:
+                cliente.settimeout(2.5)
+                resposta = cliente.recv(256).decode()
+                linhas = resposta.strip().splitlines()
 
-            elif modo == "rs":
-                if "ACK" in resposta:
-                    inicio += 1
-                    print(f"Pacote confirmado. Nova base {inicio}")
-                else:
-                    print("Erro detectado, mas continuando...")
+                for linha in linhas:
+                    try:
+                        ack = json.loads(linha)
+                        if ack["tipo"] == "ACK":
+                            if modo == "gbn":
+                                print(f"ACK recebido: {ack['sequencia']}")
+                                inicio = ack["sequencia"] + 1
+                                proximo = inicio
+                                print(f"Janela movida para {inicio}")
+                            elif modo == "rs":
+                                if ack["sequencia"] == inicio:
+                                    print(f"ACK recebido: {ack['sequencia']}")
+                                    inicio += 1
+                                else:
+                                    print("ACK fora de ordem.")
+                        elif ack["tipo"] == "ERRO":
+                            print(f"Erro no pacote {ack['sequencia']}, reenviando da base...")
+                            proximo = inicio
+                    except json.JSONDecodeError:
+                        print("Resposta inválida do servidor:", linha)
 
-        except socket.timeout:
-            print("Timeout detectado! Reenviando...")
-            proximo = inicio
+            except socket.timeout:
+                print("Timeout! Reenviando a partir da base da janela.")
+                proximo = inicio
 
-    tempo_que_termina = time.time()
-    tempototal_msg = tempo_que_termina - tempo_inicio
-    print(f"Tempo total de envio: {tempototal_msg:.3f} segundos")
+        tempo_fim = time.time()
+        print(f"Tempo total de envio: {tempo_fim - tempo_inicio:.3f} segundos")
+
     cliente.close()
 
 if __name__ == "__main__":

@@ -24,52 +24,76 @@ def main():
     print(f"Modo de operação: {tipo}")
     conexao.send(b"Configuracao aceita.\n")
 
+    buffer = ""
     recebidos = {}
     esperado = 0
 
     while True:
         try:
-            pacote_bruto = conexao.recv(1024).decode()
-            if not pacote_bruto:
+            data = conexao.recv(1024).decode()
+            if not data:
+                print("Conexão encerrada pelo cliente.")
                 break
-        except:
+            buffer += data
+
+            while "\n" in buffer:
+                linha, buffer = buffer.split("\n", 1)
+                if not linha.strip():
+                    continue
+
+                print("Pacote recebido:", linha)
+
+                try:
+                    pacote = json.loads(linha)
+                except:
+                    print("Erro no JSON recebido.")
+                    continue
+
+                if pacote["conteudo"] == "###" or pacote["sequencia"] == -1:
+                    ack_msg = json.dumps({"tipo": "ACK", "sequencia": pacote["sequencia"]}) + "\n"
+                    conexao.send(ack_msg.encode())
+
+                    if recebidos:
+                        final = ''.join(recebidos[k] for k in sorted(recebidos))
+                        print("Mensagem reconstruída:", final)
+                    else:
+                        print("Fim recebido, mas nenhuma mensagem para reconstruir.")
+
+                    recebidos = {}
+                    esperado = 0
+                    continue
+
+
+
+                seq = pacote["sequencia"]
+                conteudo = pacote["conteudo"]
+                checksum_pacote = pacote["checksum"]
+
+                if calcular_checksum(conteudo) != checksum_pacote:
+                    print(f"Checksum errado no pacote {seq}")
+                    erro_msg = json.dumps({"tipo": "ERRO", "sequencia": seq}) + "\n"
+                    conexao.send(erro_msg.encode())
+                    continue
+
+                if tipo == "gbn":
+                    if seq == esperado:
+                        recebidos[seq] = conteudo
+                        esperado += 1
+                        ack_msg = json.dumps({"tipo": "ACK", "sequencia": seq}) + "\n"
+                        conexao.send(ack_msg.encode())
+                    else:
+                        print(f"Fora de ordem. Esperado {esperado}, recebeu {seq}")
+                        erro_msg = json.dumps({"tipo": "ERRO", "sequencia": seq}) + "\n"
+                        conexao.send(erro_msg.encode())
+
+                elif tipo == "rs":
+                    recebidos[seq] = conteudo
+                    ack_msg = json.dumps({"tipo": "ACK", "sequencia": seq}) + "\n"
+                    conexao.send(ack_msg.encode())
+
+        except Exception as e:
+            print("Erro ao receber pacote:", e)
             break
-
-        print("Pacote recebido:", pacote_bruto)
-
-        try:
-            pacote = json.loads(pacote_bruto)
-        except:
-            print("Erro no JSON recebido.")
-            continue
-
-        if pacote["conteudo"] == "###":
-            break
-
-        seq = pacote["sequencia"]
-        conteudo = pacote["conteudo"]
-        checksum_pacote = pacote["checksum"]
-
-        if calcular_checksum(conteudo) != checksum_pacote:
-            print(f"Checksum errado no pacote {seq}")
-            conexao.send(b"ERRO")
-            continue
-
-        if tipo == "gbn":
-            if seq == esperado:
-                recebidos[seq] = conteudo
-                esperado += 1
-                conexao.send(b"ACK")
-            else:
-                print(f"Fora de ordem. Esperado {esperado}, recebeu {seq}")
-                conexao.send(b"ERRO")
-
-        elif tipo == "rs":
-            recebidos[seq] = conteudo
-            conexao.send(b"ACK")
-
-    final = ''.join(recebidos[k] for k in sorted(recebidos))
-    print("Mensagem reconstruída:", final)
 
     conexao.close()
 
