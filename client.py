@@ -46,20 +46,28 @@ def main():
         pacotes = criar_pacotes(mensagem)
         pacotes.append({"sequencia": len(pacotes), "conteudo": "###", "checksum": 0})
 
-        inicio = 0
-        proximo = 0
+        base = 0
+        next_seq = 0
+        tempos_envio = {}
+
         tempo_inicio = time.time()
 
-        while inicio < len(pacotes):
+        while base < len(pacotes):
             if modo == "rs":
-                cliente.send((json.dumps(pacotes[inicio]) + "\n").encode())
-                print(f"Enviado pacote {pacotes[inicio]['sequencia']}")
-                proximo = inicio + 1  # só avança após ACK abaixo
-            else:  # modo gbn
-                while proximo < inicio + janela and proximo < len(pacotes):
-                    cliente.send((json.dumps(pacotes[proximo]) + "\n").encode())
-                    print(f"Enviado pacote {pacotes[proximo]['sequencia']}")
-                    proximo += 1
+                pacote = pacotes[base]
+                cliente.send((json.dumps(pacote) + "\n").encode())
+                print(f"Enviado pacote {pacote['sequencia']} com checksum {pacote['checksum']}")
+                tempos_envio[pacote["sequencia"]] = time.time()
+                next_seq = base + 1  # só avança após ACK
+
+            else:  # GBN
+                while next_seq < base + janela and next_seq < len(pacotes):
+                    pacote = pacotes[next_seq]
+                    cliente.send((json.dumps(pacote) + "\n").encode())
+                    print(f"Enviado pacote {pacote['sequencia']} com checksum {pacote['checksum']}")
+                    tempos_envio[pacote["sequencia"]] = time.time()
+                    next_seq += 1
+
 
 
             try:
@@ -70,27 +78,40 @@ def main():
                 for linha in linhas:
                     try:
                         ack = json.loads(linha)
+                        seq = ack.get("sequencia", -1)
+
                         if ack["tipo"] == "ACK":
+                            if seq in tempos_envio:
+                                delta = time.time() - tempos_envio[seq]
+                            else:
+                                delta = 0
+
+                            print(f"ACK cumulativo recebido até o pacote {seq} (RTT: {delta:.3f}s)")
+
                             if modo == "gbn":
-                                print(f"ACK recebido: {ack['sequencia']}")
-                                inicio = ack["sequencia"] + 1
-                                proximo = inicio
-                                print(f"Janela movida para {inicio}")
+                                # move a base apenas até o ACK cumulativo
+                                base = seq + 1
+                                next_seq = base  # reseta para a nova janela
+
+
                             elif modo == "rs":
-                                if ack["sequencia"] == inicio:
-                                    print(f"ACK recebido: {ack['sequencia']}")
-                                    inicio += 1
+                                if seq == base:
+                                    base += 1
                                 else:
                                     print("ACK fora de ordem.")
+
                         elif ack["tipo"] == "ERRO":
-                            print(f"Erro no pacote {ack['sequencia']}, reenviando da base...")
-                            proximo = inicio
+                            print(f"Erro no pacote {seq}, reenviando da base...")
+                            if modo == "gbn":
+                                next_seq = base  # Reenvia toda a janela
                     except json.JSONDecodeError:
                         print("Resposta inválida do servidor:", linha)
 
             except socket.timeout:
                 print("Timeout! Reenviando a partir da base da janela.")
-                proximo = inicio
+                if modo == "gbn":
+                    next_seq = base
+
 
         tempo_fim = time.time()
         print(f"Tempo total de envio: {tempo_fim - tempo_inicio:.3f} segundos")
@@ -99,3 +120,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    #janela fixa, timer para cada ack e checksum no cliente.

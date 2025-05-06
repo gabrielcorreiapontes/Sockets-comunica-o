@@ -79,12 +79,16 @@ def main():
                     if seq == esperado:
                         recebidos[seq] = conteudo
                         esperado += 1
-                        ack_msg = json.dumps({"tipo": "ACK", "sequencia": seq}) + "\n"
-                        conexao.send(ack_msg.encode())
+
+                        # Verifica se completou uma janela de tamanho fixo
+                        if esperado % 4 == 0 or pacote["conteudo"] == "###":
+                            ack_msg = json.dumps({"tipo": "ACK", "sequencia": esperado - 1}) + "\n"
+                            conexao.send(ack_msg.encode())
+                            print(f"[Servidor] ✅ ACK cumulativo enviado até o pacote {esperado - 1}")
                     else:
                         print(f"Fora de ordem. Esperado {esperado}, recebeu {seq}")
-                        erro_msg = json.dumps({"tipo": "ERRO", "sequencia": seq}) + "\n"
-                        conexao.send(erro_msg.encode())
+                        # Ignora pacotes fora de ordem
+
 
                 elif tipo == "rs":
                     recebidos[seq] = conteudo
