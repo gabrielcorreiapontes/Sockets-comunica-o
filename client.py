@@ -37,14 +37,33 @@ def main():
 
     janela = 4
     while True:
-        mensagem = input("Digite a mensagem para enviar (ou 'exit' para encerrar): ")
-        if mensagem.strip().lower() == "exit":
+        # Verifica se o usuário deseja encerrar
+        saida = input("Deseja enviar uma mensagem? (s para sim, qualquer outra tecla para sair): ")
+        if saida.strip().lower() != "s":
             fim = json.dumps({"sequencia": -1, "conteudo": "###", "checksum": 0}) + "\n"
             cliente.send(fim.encode())
             break
 
+        # Define o tamanho da mensagem permitido
+        while True:
+            try:
+                tamanho_msg = int(input("Digite o tamanho máximo da mensagem: "))
+                break
+            except ValueError:
+                print("Por favor, digite um número inteiro válido.")
+
+        # Solicita a mensagem e garante que esteja dentro do tamanho permitido
+        mensagem = input("Digite a mensagem a ser enviada: ")
+        while len(mensagem) > tamanho_msg:
+            print(f"A mensagem tem {len(mensagem)} caracteres, mas o limite é {tamanho_msg}.")
+            mensagem = input("Digite novamente a mensagem: ")
+
+
         pacotes = criar_pacotes(mensagem)
         pacotes.append({"sequencia": len(pacotes), "conteudo": "###", "checksum": 0})
+        num_pacotes = len(pacotes)  # já inclui o pacote de término "###"
+        print(f"[Cliente] Janela: {janela} | Total de pacotes a enviar: {num_pacotes}")
+
 
         base = 0
         next_seq = 0
@@ -56,7 +75,7 @@ def main():
             if modo == "rs":
                 pacote = pacotes[base]
                 cliente.send((json.dumps(pacote) + "\n").encode())
-                print(f"Enviado pacote {pacote['sequencia']} com checksum {pacote['checksum']}")
+                print(f"[Cliente] ➡️ Enviado pacote {pacote['sequencia']} | Payload: '{pacote['conteudo']}' | Checksum: {pacote['checksum']}")
                 tempos_envio[pacote["sequencia"]] = time.time()
                 next_seq = base + 1  # só avança após ACK
 
@@ -64,7 +83,7 @@ def main():
                 while next_seq < base + janela and next_seq < len(pacotes):
                     pacote = pacotes[next_seq]
                     cliente.send((json.dumps(pacote) + "\n").encode())
-                    print(f"Enviado pacote {pacote['sequencia']} com checksum {pacote['checksum']}")
+                    print(f"[Cliente] ➡️ Enviado pacote {pacote['sequencia']} | Payload: '{pacote['conteudo']}' | Checksum: {pacote['checksum']}")
                     tempos_envio[pacote["sequencia"]] = time.time()
                     next_seq += 1
 
@@ -121,4 +140,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-    #janela fixa, timer para cada ack e checksum no cliente.
