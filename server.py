@@ -1,5 +1,11 @@
 import socket
 import json
+import random
+
+ERRO_PROBABILIDADE = 0.2
+PERDA_PROBABILIDADE = 0.15  
+
+
 
 def calcular_checksum(dado):
     return sum(dado.encode()) % 256
@@ -68,6 +74,15 @@ def main():
                 seq = pacote["sequencia"]
                 conteudo = pacote["conteudo"]
                 checksum_pacote = pacote["checksum"]
+                # Simulação de perda: ignora o pacote com uma certa probabilidade
+                if random.random() < PERDA_PROBABILIDADE:
+                    print(f"[Servidor] ❌ Simulando perda do pacote {seq} — ignorado completamente")
+                    continue  # ignora o pacote (nenhum ACK nem ERRO enviado)
+                # Simulação de erro: altera o conteúdo com 20% de chance
+                if random.random() < ERRO_PROBABILIDADE:
+                    print(f"[Servidor] ⚠️ Simulando erro no pacote {seq}")
+                    conteudo = conteudo[::-1]  # inverte o conteúdo (ou modifique qualquer coisa)
+
 
                 if calcular_checksum(conteudo) != checksum_pacote:
                     print(f"Checksum errado no pacote {seq}")
