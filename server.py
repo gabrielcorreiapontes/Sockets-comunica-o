@@ -2,8 +2,8 @@ import socket
 import json
 import random
 
-ERRO_PROBABILIDADE = 0.2
-PERDA_PROBABILIDADE = 0.15  
+ERRO_PROBABILIDADE = 0.2   
+PERDA_PROBABILIDADE = 0.15
 
 
 
@@ -21,7 +21,11 @@ def main():
 
     inicial = conexao.recv(256).decode()
     try:
-        tipo, rajada = inicial.strip().split(",")
+        valores = inicial.strip().split(",")
+        tipo = valores[0]
+        rajada = valores[1]
+        falhas = valores[2] if len(valores) > 2 else "nao"
+
     except:
         print("Erro ao interpretar configurações.")
         conexao.close()
@@ -33,6 +37,8 @@ def main():
     buffer = ""
     recebidos = {}
     esperado = 0
+
+    ultimo_ack = -1
 
     while True:
         try:
@@ -59,11 +65,12 @@ def main():
                     ack_msg = json.dumps({"tipo": "ACK", "sequencia": pacote["sequencia"]}) + "\n"
                     conexao.send(ack_msg.encode())
 
-                    if recebidos:
+                    if all(k in recebidos for k in range(len(recebidos))):
                         final = ''.join(recebidos[k] for k in sorted(recebidos))
                         print("Mensagem reconstruída:", final)
                     else:
-                        print("Fim recebido, mas nenhuma mensagem para reconstruir.")
+                        print("Nem todos os pacotes válidos foram recebidos — reconstrução incompleta.")
+
 
                     recebidos = {}
                     esperado = 0
@@ -75,35 +82,49 @@ def main():
                 conteudo = pacote["conteudo"]
                 checksum_pacote = pacote["checksum"]
                 # Simulação de perda: ignora o pacote com uma certa probabilidade
-                if random.random() < PERDA_PROBABILIDADE:
-                    print(f"[Servidor] ❌ Simulando perda do pacote {seq} — ignorado completamente")
-                    continue  # ignora o pacote (nenhum ACK nem ERRO enviado)
-                # Simulação de erro: altera o conteúdo com 20% de chance
-                if random.random() < ERRO_PROBABILIDADE:
+                if falhas == "sim" and random.random() < PERDA_PROBABILIDADE:
+                    print(f"[Servidor] ❌ Simulando perda do pacote {seq}")
+                    continue  # ignora o pacote completamente
+
+                conteudo_original = pacote["conteudo"]
+                conteudo_para_verificacao = conteudo_original
+
+                # Simula erro apenas na cópia usada para verificação
+                if falhas == "sim" and random.random() < ERRO_PROBABILIDADE:
                     print(f"[Servidor] ⚠️ Simulando erro no pacote {seq}")
-                    conteudo = conteudo[::-1]  # inverte o conteúdo (ou modifique qualquer coisa)
+                    conteudo_para_verificacao = conteudo_para_verificacao[::-1] + "#"
 
 
-                if calcular_checksum(conteudo) != checksum_pacote:
+                # Verifica integridade usando a cópia alterada (se necessário)
+                if calcular_checksum(conteudo_para_verificacao) != checksum_pacote:
                     print(f"Checksum errado no pacote {seq}")
                     erro_msg = json.dumps({"tipo": "ERRO", "sequencia": seq}) + "\n"
                     conexao.send(erro_msg.encode())
                     continue
+
+                # A partir daqui, usa o conteúdo original (sem alteração)
+                conteudo = conteudo_original
 
                 if tipo == "gbn":
                     if seq == esperado:
                         recebidos[seq] = conteudo
                         esperado += 1
 
-                        # Verifica se completou uma janela de tamanho fixo
-                        if esperado % 4 == 0 or pacote["conteudo"] == "###":
+                        # Após aceitar o esperado, verifique se os próximos já foram recebidos e avance
+                        while esperado in recebidos:
+                            esperado += 1
+
+                        if esperado - 1 != ultimo_ack:
                             ack_msg = json.dumps({"tipo": "ACK", "sequencia": esperado - 1}) + "\n"
                             conexao.send(ack_msg.encode())
                             print(f"[Servidor] ✅ ACK cumulativo enviado até o pacote {esperado - 1}")
-                    else:
-                        print(f"Fora de ordem. Esperado {esperado}, recebeu {seq}")
-                        # Ignora pacotes fora de ordem
+                            ultimo_ack = esperado - 1
 
+                    else:
+                        # Salva pacotes futuros, mas só envia ACK quando chegar o esperado
+                        if seq > esperado:
+                            recebidos[seq] = conteudo
+                        print(f"[Servidor] 🛑 Ignorado: fora de ordem. Esperado {esperado}, recebeu {seq}")
 
                 elif tipo == "rs":
                     recebidos[seq] = conteudo

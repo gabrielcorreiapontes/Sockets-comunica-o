@@ -10,8 +10,10 @@ def criar_pacotes(texto):
             "sequencia": idx,
             "conteudo": bloco,
             "checksum": sum(bloco.encode()) % 256
+
         }
         pacotes.append(pacote)
+        print(f"[DEBUG] Criado pacote {idx}: '{bloco}' | Checksum: {sum(bloco.encode()) % 256}")
     return pacotes
 
 def escolher_modo():
@@ -31,7 +33,10 @@ def main():
     modo = escolher_modo()
     rajada = "True"
 
-    cliente.send(f"{modo},{rajada}".encode())
+    falhas = input("Deseja ativar simulação de perda e erro? (s para sim / qualquer outra tecla para não): ")
+    falhas = "sim" if falhas.strip().lower() == "s" else "nao"
+
+    cliente.send(f"{modo},{rajada},{falhas}".encode())
     confirma = cliente.recv(256).decode()
     print("Servidor:", confirma)
 
@@ -105,12 +110,13 @@ def main():
                             else:
                                 delta = 0
 
-                            print(f"ACK cumulativo recebido até o pacote {seq} (RTT: {delta:.3f}s)")
+                            print(f"[Cliente] ✅ ACK recebido para o pacote {seq} | Tempo de entrega: {delta:.3f}s")
 
                             if modo == "gbn":
-                                # move a base apenas até o ACK cumulativo
-                                base = seq + 1
-                                next_seq = base  # reseta para a nova janela
+                                if seq >= base:
+                                    base = seq + 1
+                                    next_seq = base
+
 
 
                             elif modo == "rs":
@@ -118,18 +124,27 @@ def main():
                                     base += 1
                                 else:
                                     print("ACK fora de ordem.")
-
+                                    
                         elif ack["tipo"] == "ERRO":
-                            print(f"Erro no pacote {seq}, reenviando da base...")
+                            print(f"Erro no pacote {seq}, reenviando apenas esse pacote (modo GBN modificado)")
                             if modo == "gbn":
-                                next_seq = base  # Reenvia toda a janela
+                                pacote_erro = pacotes[seq]
+                                cliente.send((json.dumps(pacote_erro) + "\n").encode())
+                                print(f"[Cliente] 🔁 Reenviado pacote {seq} com checksum {pacote_erro['checksum']}")
+                                tempos_envio[seq] = time.time()
+
+
                     except json.JSONDecodeError:
                         print("Resposta inválida do servidor:", linha)
 
             except socket.timeout:
-                print("Timeout! Reenviando a partir da base da janela.")
+                print("Timeout! Nenhum ACK recebido. Reenviando pacote da base.")
                 if modo == "gbn":
-                    next_seq = base
+                    pacote_timeout = pacotes[base]
+                    cliente.send((json.dumps(pacote_timeout) + "\n").encode())
+                    print(f"[Cliente] 🔁 Reenviado pacote {base} por timeout | Checksum: {pacote_timeout['checksum']}")
+                    tempos_envio[base] = time.time()
+
 
 
         tempo_fim = time.time()
