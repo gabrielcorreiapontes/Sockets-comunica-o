@@ -5,8 +5,6 @@ import random
 ERRO_PROBABILIDADE = 0.2   
 PERDA_PROBABILIDADE = 0.15
 
-
-
 def calcular_checksum(dado):
     return sum(dado.encode()) % 256
 
@@ -65,17 +63,24 @@ def main():
                     ack_msg = json.dumps({"tipo": "ACK", "sequencia": pacote["sequencia"]}) + "\n"
                     conexao.send(ack_msg.encode())
 
-                    if all(k in recebidos for k in range(len(recebidos))):
-                        final = ''.join(recebidos[k] for k in sorted(recebidos))
-                        print("Mensagem reconstruída:", final)
+                    # Garante que temos pelo menos um pacote antes de calcular
+                    if recebidos:
+                        maior_indice = max(recebidos.keys())
+                        dados_recebidos = all(k in recebidos for k in range(maior_indice))  # não inclui o ###
+
+                        if dados_recebidos:
+                            final = ''.join(recebidos[k] for k in range(maior_indice))
+                            print("Mensagem reconstruída:", final)
+
+                            # Agora sim limpa os dados
+                            recebidos = {}
+                            esperado = 0
+                        else:
+                            print("Recebido pacote final (###), mas ainda faltam pacotes de dados. Aguardando...")
                     else:
-                        print("Nem todos os pacotes válidos foram recebidos — reconstrução incompleta.")
+                        print("Pacote final recebido, mas nenhum dado recebido ainda.")
 
-
-                    recebidos = {}
-                    esperado = 0
                     continue
-
 
 
                 seq = pacote["sequencia"]
@@ -121,10 +126,8 @@ def main():
                             ultimo_ack = esperado - 1
 
                     else:
-                        # Salva pacotes futuros, mas só envia ACK quando chegar o esperado
-                        if seq > esperado:
-                            recebidos[seq] = conteudo
-                        print(f"[Servidor] 🛑 Ignorado: fora de ordem. Esperado {esperado}, recebeu {seq}")
+                        print(f"[Servidor] ❌ Pacote {seq} descartado (fora de ordem no GBN — esperado: {esperado})")
+
 
                 elif tipo == "rs":
                     recebidos[seq] = conteudo

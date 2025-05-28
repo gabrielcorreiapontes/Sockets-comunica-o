@@ -126,24 +126,45 @@ def main():
                                     print("ACK fora de ordem.")
                                     
                         elif ack["tipo"] == "ERRO":
-                            print(f"Erro no pacote {seq}, reenviando apenas esse pacote (modo GBN modificado)")
                             if modo == "gbn":
-                                pacote_erro = pacotes[seq]
-                                cliente.send((json.dumps(pacote_erro) + "\n").encode())
-                                print(f"[Cliente] 🔁 Reenviado pacote {seq} com checksum {pacote_erro['checksum']}")
-                                tempos_envio[seq] = time.time()
+                                print(f"[Cliente] ❗ Erro detectado no pacote {seq}, reiniciando envio a partir dele")
+                                next_seq = seq  # Reinicia a janela do ponto do erro
 
 
                     except json.JSONDecodeError:
                         print("Resposta inválida do servidor:", linha)
 
             except socket.timeout:
-                print("Timeout! Nenhum ACK recebido. Reenviando pacote da base.")
+                print(f"[Cliente] ⏱ Timeout! Reenviando todos os pacotes da janela a partir do pacote {base}")
                 if modo == "gbn":
-                    pacote_timeout = pacotes[base]
-                    cliente.send((json.dumps(pacote_timeout) + "\n").encode())
-                    print(f"[Cliente] 🔁 Reenviado pacote {base} por timeout | Checksum: {pacote_timeout['checksum']}")
-                    tempos_envio[base] = time.time()
+                    next_seq = base  # Redefine o next_seq para começar reenvio
+
+            # Aguarda todos os ACKs dos pacotes reais antes de enviar o de término
+            if modo == "gbn":
+                while base < len(pacotes) - 1:
+                    try:
+                        cliente.settimeout(2.5)
+                        resposta = cliente.recv(256).decode()
+                        linhas = resposta.strip().splitlines()
+                        for linha in linhas:
+                            ack = json.loads(linha)
+                            if ack["tipo"] == "ACK":
+                                seq = ack["sequencia"]
+                                if seq >= base:
+                                    base = seq + 1
+                                    next_seq = base
+                    except socket.timeout:
+                        next_seq = base
+                        for i in range(base, min(base + janela, len(pacotes) - 1)):
+                            pacote = pacotes[i]
+                            cliente.send((json.dumps(pacote) + "\n").encode())
+                            print(f"[Cliente] 🔁 Reenviado pacote {pacote['sequencia']} por timeout antes de término")
+                            tempos_envio[pacote["sequencia"]] = time.time()
+
+            # Agora sim envia o pacote de término
+            pacote_final = pacotes[-1]
+            cliente.send((json.dumps(pacote_final) + "\n").encode())
+            print(f"[Cliente] 🏁 Enviado pacote final {pacote_final['sequencia']} | Payload: '###'")
 
 
 
