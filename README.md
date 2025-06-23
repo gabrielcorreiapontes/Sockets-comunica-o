@@ -3,7 +3,7 @@
 Este projeto foi desenvolvido como parte de um trabalho prático da disciplina de **Infraestrutura de Redes e Comunicação**. A aplicação simula a troca de mensagens entre cliente e servidor utilizando **sockets TCP em Python**, com foco em **comunicação confiável**, incluindo a simulação de **erros e perdas no canal de comunicação**.
 
 ## 📌 Objetivo da Etapa Atual
-
+ 
 Implementar a troca de mensagens entre cliente e servidor considerando:
 
 1. Um **canal perfeito** (sem erros ou perdas);
